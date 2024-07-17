@@ -1,0 +1,974 @@
+#uselib "winmm.dll"
+#cfunc timeGetTime "timeGetTime"
+
+#uselib "dsoundex.hpi"
+#func ds_init "_ds_init@16" bmscr, int, int
+#func ds_load "_ds_load@16" bmscr, str, int, int
+#func ds_play "_ds_play@16" int, int, int, int
+#func ds_loop "_ds_loop@16" int, int, int, int
+#func ds_stop "_ds_stop@16" int, int, int, int
+#func ds_dup "_ds_dup@16" int, int, int, int
+#func ds_rel "_ds_rel@16" int, int, int, int
+
+#uselib "hspext.dll"
+#func clipset "_clipset@16" bmscr, str, int, int
+
+
+#define LEFT  0
+#define UP    1
+#define RIGHT 2
+#define DOWN  3
+#define Z     4
+#define X     5
+#define R     6
+#define S     7
+#define T     8
+#define ESC   9
+
+#define isPressed   0
+#define pressedTime 1
+
+#define isPlaying 0
+
+	screen 0, 320, 240, 0, 400, 200
+	chdpm "data.dpm"
+	goto *init
+
+*init
+	randomize
+	title "Ghost Mayoker"
+	maxSfxFileID = 50
+	maxSoundBufferDuplicate = 3
+
+	/*
+	IMPORTANT: remove the "DPM:data.dpm:" if you want to use modified graphics!
+	
+	also mind the image buffer order:
+	buffer 1: loading screen (chip_4.bmp)
+	buffer 2: text and player related sprites (chip_1.bmp)
+	buffer 3: ghost sprites (chip_2.bmp)
+	buffer 4: bedroom sprites, game logo and those lights that indicate the current music selected (chip_3.bmp)
+	*/
+
+	picload "DPM:data.dpm:chip_4.bmp", 1
+	pos 0, 0
+	gzoom 320, 320, 0, 0, 0, 160, 160
+	ds_init 44100, 2
+	dim sfxInfo, maxSfxFileID, 2
+	repeat maxSfxFileID
+		ds_load "data\\se\\se_" + cnt + ".wav", cnt
+		mes stat
+		await 0
+	loop
+
+	for id,0,maxSfxFileID,1
+		for dupe,0,maxSoundBufferDuplicate-1,1
+			ds_dup maxSfxFileID + id + maxSfxFileID * dupe, id
+		next
+	next
+
+
+	buffer 2, 320, 240, 0
+	picload "DPM:data.dpm:chip_1.bmp"
+	buffer 3, 320, 240, 0
+	picload "DPM:data.dpm:chip_2.bmp"
+	buffer 4, 320, 240, 0
+	picload "DPM:data.dpm:chip_3.bmp"
+	gsel 0
+	dim keyInfo, 10, 2
+*titleScreen
+	sinceInitTimer += 1
+	gosub *checkKeys
+	if ( keyInfo(ESC, isPressed) == 1 ) {  //
+		end
+	}
+	if ( afterZPressedTimer >= 1 ) {
+		afterZPressedTimer += 1
+	}
+	if ( afterZPressedTimer == 2 ) {
+		sfxInfo(17, isPlaying) = 1
+	}
+	if ( sinceInitTimer == 1 ) {
+		sfxInfo(18, isPlaying) = 1
+	}
+	if ( afterZPressedTimer == 64 ) {
+		goto *loadMusic
+	}
+	if ( keyInfo(Z, isPressed) == 1 & afterZPressedTimer == 0 & sinceInitTimer >= 16 ) {
+		afterZPressedTimer = 1
+	}
+	if ( keyInfo(LEFT, pressedTime) == 1 ) {
+		sfxInfo(20, isPlaying) = 1
+		music = (music + 1) \ 4
+	}
+	if ( keyInfo(RIGHT, pressedTime) == 1 ) {
+		sfxInfo(20, isPlaying) = 1
+		music = (music + 3) \ 4
+	}
+	redraw 0
+	color 0, 0, 0
+	boxf
+	if ( sinceInitTimer <= 16 ) {
+		gmode 5, 0, 0, sinceInitTimer * 16
+		pos 104, 24 - sinceInitTimer / 2
+		gcopy 4, 8, 128, 48, 88
+	}
+	else {
+		if ( afterZPressedTimer >= 33 ) {
+			gmode 5, 0, 0, (256 - (afterZPressedTimer - 32) * 16) * (afterZPressedTimer \ 2 + 2) / 2
+			pos 104, 16
+			gcopy 4, 8, 128, 48, 88
+		}
+		else {
+			gmode 5, 0, 0, 256
+			pos 104, 16
+			gcopy 4, 8, 128, 48, 88
+		}
+	}
+	pos 24, 16
+	gcopy 2, 0, 80, 64, 32
+	if ( keyInfo(LEFT, pressedTime) != 1 & keyInfo(RIGHT, pressedTime) != 1 ) {
+		pos 72, 90
+		gcopy 4, 64 + sinceInitTimer / 4 \ 4 * 16, 128 + music * 16, 15, 15
+	}
+	if ( afterZPressedTimer >= 1 ) {
+		gmode 5, 0, 0, 256 * (afterZPressedTimer \ 2) / afterZPressedTimer
+	}
+	pos 32, 72
+	gcopy 2, 136, 112, 47, 7
+	pos 0, 0
+	gzoom 320, 320, 0, 0, 0, 160, 160
+	redraw 1
+	gosub *playSfx
+	await 33
+	goto *titleScreen
+*loadMusic
+	musicBufferID = maxSfxFileID * maxSoundBufferDuplicate + 1
+	oldMusic = music
+	if ( music == 3 ) {
+		ds_rel musicBufferID
+		goto *initRoundVariables
+	}
+	ds_load "data\\music\\" + music + "_a.wav", musicBufferID
+	ds_load "data\\music\\" + music + "_b.wav", musicBufferID + 1
+	ds_load "data\\music\\" + music + "_g.wav", musicBufferID + 2
+*initRoundVariables
+	maxGhostNumber = 100
+	dimtype ghostPosInfo, 3, maxGhostNumber, 6, 0, 0
+	dim ghostAliveTimeInfo, maxGhostNumber
+	dim ghostRotateMore, maxGhostNumber          //not exactly sure what to name this????
+	
+	maxBulletNumber = 10
+	dimtype bulletPosInfo, 3, maxBulletNumber, 5, 0, 0
+	dim bulletAliveInfo, maxBulletNumber
+
+	maxHitParticleNumber = 100 //those particles that spawn around the ghost when hit
+	dimtype hitParticlePosInfo, 3, maxHitParticleNumber, 4, 0, 0
+	dim ghostHitParticleTimeInfo, maxHitParticleNumber
+
+	playerCenter = 80
+	playerAcceleration = 0.0
+	playerCenterOffset = 20.0
+	playerRotation = -90.0
+	ghostsHit = 0
+	score = 0
+	level = 1
+	ghostsRequiredForNextLevel = 1
+	roundState = 0
+	level = 1
+	gameOverTimer = 0
+	gameOverAfterGhostAnimTimer = 0
+	gameOverGhostAnimFrame = 0
+	scoreMultiplier = 0
+	comboHealth = 0
+	endScoreMultiplier = 0
+	afterComboEndCountdown = 0
+	sinceInitTimer = 0
+	levelUpScreenCountdown = 0
+	ghostHitSFX = 0
+	bombs = 1
+	playerX = 80.0
+	playerY = 60.0
+	playerBackwardsParticle = 0
+	backwardsParticleRot = 0
+	backwardsParticleCenterOffset = 0
+	musicTimer = 0
+	scoreUntilNextBomb = 0
+	roundState = 0
+	randomAngleAndStartTimer = 0
+	initialTime = timeGetTime()
+*roundLoop
+	currentTime = timeGetTime() - initialTime
+	if ( sinceInitTimer * 1000 / 30 <= currentTime ) {
+		sinceInitTimer += 1
+		if ( keyInfo(ESC, isPressed) == 1 ) {
+			end
+		}
+		if ( roundState == 1 ) {
+			musicTimer += 1
+			gosub *checkKeys
+			if ( keyInfo(Z, pressedTime) \ 3 == 1 ) {
+				gosub *getAvailableBulletSlot
+				if ( newBullet != (-1) ) {
+					bulletAliveInfo(newBullet) = 1
+					bulletPosInfo(newBullet, 0) = playerX
+					bulletPosInfo(newBullet, 1) = playerY
+					bulletPosInfo(newBullet, 4) = playerRotation
+					if ( sinceInitTimer <= 873 | music == 3 ) {
+						sfxInfo(0, isPlaying) = 1
+					}
+					else {
+						sfxInfo(22, isPlaying) = 1
+					}
+				}
+			}
+			if ( ghostSpawnCapped >= 1 ) {
+				ghostSpawnCapped -= 1
+			}
+			if ( keyInfo(X, pressedTime) == 1 & bombs >= 1 ) {
+				ghostSpawnCapped = 13
+				sfxInfo(12, isPlaying) = 1
+				bombs -= 1
+			}
+			if ( playerAcceleration >= 2 ) {
+				playerAcceleration -= 1.5
+			}
+			if ( playerAcceleration <= (-2) ) {
+				playerAcceleration += 1.5
+			}
+			if ( keyInfo(RIGHT, isPressed) == 1 & absf(playerAcceleration) <= 10 ) {
+				playerAcceleration -= 4.0 * ((playerCenterOffset - 75) / 55)
+			}
+			if ( keyInfo(LEFT, isPressed) == 1 & absf(playerAcceleration) <= 10 ) {
+				playerAcceleration += 4.0 * ((playerCenterOffset - 75) / 55)
+			}
+			playerRotation = 1.0 * (playerRotation + playerAcceleration) \ 360
+			if ( playerBackwardsParticle >= 1 ) {
+				playerBackwardsParticle -= 1
+			}
+			if ( keyInfo(S, pressedTime) == 1 ) {
+				playerRotation = (1.0 * playerRotation + 180) \ 360
+				playerBackwardsParticle = 3
+				backwardsParticleRot = playerRotation
+				backwardsParticleCenterOffset = playerCenterOffset
+				sfxInfo(23, isPlaying) = 1
+			}
+			playerX = 1.0 * playerCenter + cos(0.0174532925199433 * playerRotation) * playerCenterOffset
+			playerY = 1.0 * playerCenter + sin(0.0174532925199433 * playerRotation) * playerCenterOffset
+			
+			if ( keyInfo(UP, isPressed) == 1 & playerCenterOffset <= 69 ) {
+				playerCenterOffset += 1
+			}
+			if ( keyInfo(DOWN, isPressed) == 1 & playerCenterOffset >= 16 ) {
+				playerCenterOffset -= 1
+			}
+			if ( playerCenterOffset >= 21 ) {
+				playerCenterOffset -= (playerCenterOffset - 20) / 60
+			}
+			if ( playerCenterOffset <= 19 ) {
+				playerCenterOffset -= (playerCenterOffset - 20) / 5
+			}
+			if ( playerCenterOffset >= 69 ) {
+				playerCenterOffset = 69.0
+			}
+			if ( playerCenterOffset <= 16 ) {
+				playerCenterOffset = 16.0
+			}
+			if ( score >= (scoreUntilNextBomb + 1) * 10000 ) {
+				bombs += 1
+				scoreUntilNextBomb += 1
+				sfxInfo(21, isPlaying) = 1
+			}
+			gosub *ghostMovement
+			if ( sinceInitTimer \ 240 == 0 ) {
+				ghostRandomMoveType = rnd(5)
+				moreRandomAngleMultiplier = rnd(7) - 3  //whar
+				anotherRandomAngle = rnd(360)
+				if ( ghostRandomMoveType == 3 & moreRandomAngleMultiplier == 0 ) {
+					moreRandomAngleMultiplier = 3
+				}
+			}
+			if ( ghostSpawnCountdown <= 0 & ghostSpawnCapped == 0 ) {
+				//spawn ghost
+				ghostAbsoluteCounter += 1
+				gosub *getAvailableGhostSlot
+				if ( newGhost != (-1) ) {
+					randomAngleAndStartTimer = rnd(360)
+					ghostAliveTimeInfo(newGhost) = 1
+					if ( level <= 5 ) {
+						ghostPosInfo(newGhost, 4) = 1.0 * randomAngleAndStartTimer + 180 + 60 * (rnd(2) * 2 - 1) / (ghostsHit / 100 + 1)
+					}
+					else {
+						if ( level \ 6 == 0 ) {
+							ghostPosInfo(newGhost, 4) = 1.0 * randomAngleAndStartTimer + 180 + 60 * (newGhost \ 2 * 2 - 1) / (ghostsHit / 100 + 1)
+							ghostRotateMore(newGhost) = 0
+						}
+						else {
+							if ( ghostRandomMoveType == 0 ) {
+								if ( ghostAbsoluteCounter \ 2 == 0 ) {
+									ghostPosInfo(newGhost, 4) = 1.0 * randomAngleAndStartTimer + 180 + 60 * (newGhost \ 2 * 2 - 1) * (rnd(2) + 1) / (ghostsHit / 100 + 1)
+									ghostRotateMore(newGhost) = 0
+								}
+								else {
+									randomAngleAndStartTimer = (sinceInitTimer * moreRandomAngleMultiplier + anotherRandomAngle) \ 360
+									ghostPosInfo(newGhost, 4) = 1.0 * randomAngleAndStartTimer + 180
+									ghostRotateMore(newGhost) = 1
+								}
+							}
+							if ( ghostRandomMoveType == 1 ) {
+								randomAngleAndStartTimer = (sinceInitTimer * moreRandomAngleMultiplier + anotherRandomAngle + ghostAbsoluteCounter \ 2 * 180) \ 360
+								if ( ghostAbsoluteCounter \ 2 >= 1 ) {
+									ghostPosInfo(newGhost, 4) = 1.0 * randomAngleAndStartTimer + 180 + 60 * (newGhost \ 2 * 2 - 1) * (rnd(2) + 1) / (ghostsHit / 100 + 1)
+									ghostRotateMore(newGhost) = 0
+								}
+								else {
+									ghostPosInfo(newGhost, 4) = 1.0 * randomAngleAndStartTimer + 180
+									ghostRotateMore(newGhost) = 1
+								}
+							}
+							if ( ghostRandomMoveType == 2 ) {
+								randomAngleAndStartTimer = (sinceInitTimer / 10 * moreRandomAngleMultiplier + anotherRandomAngle + ghostAbsoluteCounter \ 3 * 120) \ 360
+								if ( ghostAbsoluteCounter \ 3 >= 1 ) {
+									ghostPosInfo(newGhost, 4) = 1.0 * randomAngleAndStartTimer + 180 + 120 * (newGhost \ 2 * 2 - 1) * (rnd(2) + 1) / (ghostsHit / 100 + 1)
+									ghostRotateMore(newGhost) = 0
+								}
+								else {
+									ghostPosInfo(newGhost, 4) = 1.0 * randomAngleAndStartTimer + 180
+									ghostRotateMore(newGhost) = 1
+								}
+							}
+							if ( ghostRandomMoveType == 3 ) {
+								randomAngleAndStartTimer = (sinceInitTimer * moreRandomAngleMultiplier * 2 + anotherRandomAngle) \ 360
+								ghostPosInfo(newGhost, 4) = 1.0 * randomAngleAndStartTimer + 180
+								ghostRotateMore(newGhost) = 1
+							}
+							if ( ghostRandomMoveType == 4 ) {
+								if ( ghostAbsoluteCounter \ 48 >= 1 ) {
+									ghostPosInfo(newGhost, 4) = 1.0 * randomAngleAndStartTimer + 180 + 60 * (newGhost \ 2 * 2 - 1) * (rnd(2) + 1) / (ghostsHit / 100 + 1)
+									ghostRotateMore(newGhost) = 0
+								}
+								else {
+									ghostPosInfo(newGhost, 4) = 1.0 * randomAngleAndStartTimer + 180
+									ghostRotateMore(newGhost) = 1
+								}
+							}
+						}
+					}
+					ghostPosInfo(newGhost, 0) = 80.0 + cos(0.0174532925199433 * randomAngleAndStartTimer) * 78
+					ghostPosInfo(newGhost, 1) = 80.0 + sin(0.0174532925199433 * randomAngleAndStartTimer) * 78
+					ghostPosInfo(newGhost, 5) = 0.2
+				}
+				ghostSpawnCountdown = 30 / level
+			}
+			else {
+				ghostSpawnCountdown -= 1
+			}
+			ghostSpeed = 0.002 * ghostsHit + 0.6
+			if ( afterComboEndCountdown >= 1 ) {
+				afterComboEndCountdown -= 1
+			}
+			if ( comboHealth >= 1 ) {
+				comboHealth -= 1
+				if ( comboHealth == 1 ) {
+					if ( scoreMultiplier >= 1 ) {
+						endScoreMultiplier = scoreMultiplier
+						afterComboEndCountdown = 15
+					}
+					scoreMultiplier = 0
+				}
+				if ( afterComboEndCountdown == 15 ) {
+					if ( endScoreMultiplier >= 10 & endScoreMultiplier <= 49 ) {
+						sfxInfo(25, isPlaying) = 1
+					}
+					if ( endScoreMultiplier >= 50 ) {
+						sfxInfo(24, isPlaying) = 1
+					}
+				}
+			}
+			gosub *bulletMovement
+			gosub *ghostHitPartMovement
+			if ( levelUpScreenCountdown >= 1 ) {
+				levelUpScreenCountdown -= 1
+			}
+			if ( ghostsHit / 10 >= ghostsRequiredForNextLevel ) {
+				level += 1
+				sfxInfo(13, isPlaying) = 1
+				levelUpScreenCountdown = 30
+				if ( level <= 2 ) {
+					ghostsRequiredForNextLevel += 1
+				}
+				else {
+					ghostsRequiredForNextLevel += level - 2
+				}
+			}
+			if ( keyInfo(R, pressedTime) == 1 ) {
+				ds_stop musicBufferID
+				ds_stop musicBufferID + 1
+				goto *initRoundVariables
+			}
+			redraw 0
+			color 0, 0, 0
+			boxf
+			gmode 5, 0, 0, 256
+			pos 66, 51
+			gcopy 4, 170, 3, 26, 20
+			pos 56, 40
+			gcopy 4, 208, 0, 48, 40
+			for ghost, 0, maxGhostNumber, 1
+				if (ghostAliveTimeInfo(ghost) >= 1) {
+					if (ghostAliveTimeInfo(ghost) <= 7) {
+						gmode 5, 0, 0, ghostAliveTimeInfo(ghost) * 32
+					} else {
+						gmode 5, 0, 0, 256
+					}
+					ghostSpriteRotation = (ghostPosInfo(ghost, 4) - 90 + 720) \ 360 * 2 / 45
+					pos ghostPosInfo(ghost, 0) - 8, ghostPosInfo(ghost, 1) * 3 / 4 - 8
+					gcopy 3, 16 * ghostSpriteRotation, 16 * ((sinceInitTimer / 3 + ghost) \ 4), 16, 16
+				}
+				
+				if (ghostAliveTimeInfo(ghost) <= (-1)) {
+					if (ghostAliveTimeInfo(ghost) >= (-8)) {
+						ghostFade = ghostAliveTimeInfo(ghost) * (-32)
+					}
+					
+					if (ghostAliveTimeInfo(ghost) == (-16) | ghostAliveTimeInfo(ghost) == (-14) | ghostAliveTimeInfo(ghost) == (-12) | ghostAliveTimeInfo(ghost) == (-10)) {
+						ghostFade = 0
+					}
+					
+					if (ghostAliveTimeInfo(ghost) == (-15) | ghostAliveTimeInfo(ghost) == (-13) | ghostAliveTimeInfo(ghost) == (-11) | ghostAliveTimeInfo(ghost) == (-9)) {
+						ghostFade = 256
+					}
+					
+					ghostSpriteRotation = (ghostPosInfo(ghost, 4) - 90 + 720) \ 360 * 2 / 45
+					gmode 5, 0, 0, ghostFade
+					pos ghostPosInfo(ghost, 0) - 8, ghostPosInfo(ghost, 1) * 3 / 4 - 8
+					gcopy 3, 16 * ghostSpriteRotation, 16 * 4, 16, 16
+				}
+			next
+			for particle,0,maxHitParticleNumber,1
+				if ( ghostHitParticleTimeInfo(particle) >= 1 ) {
+					gmode 5, 0, 0, ghostHitParticleTimeInfo(particle) * 64 / 3
+					pos hitParticlePosInfo(particle, 0) - 4, hitParticlePosInfo(particle, 1) * 3 / 4 - 4
+					gcopy 2, 8 * ((sinceInitTimer + particle) \ 6), 16, 8, 8
+				}
+			next
+
+			color 255, 255, 0
+			gmode 5, 0, 0, 256
+			pos playerX - 4, playerY * 3 / 4 - 4
+			gcopy 2, 8 * (sinceInitTimer / 5 \ 6), 0, 8, 8
+			if ( playerBackwardsParticle >= 1 ) {
+				//spawns that trail when you do backwards action
+				repeat 5
+					gmode 5, 0, 0, cnt * playerBackwardsParticle * 30 + 10
+					pos cos(0.0174532925199433 * backwardsParticleRot) * (backwardsParticleCenterOffset * (cnt * 2 - 5) * 0.2) + 80 - 4, sin(0.0174532925199433 * backwardsParticleRot) * (backwardsParticleCenterOffset * (cnt * 2 - 5) * 0.2) * 3 / 4 + 60 - 4
+					gcopy 2, 8 * ((sinceInitTimer / 5 + cnt) \ 6), 0, 8, 8
+				loop
+			}
+			color 255, 0, 0
+
+			for bullet,0,maxBulletNumber,1
+				if ( bulletAliveInfo(bullet) == 1 ) {
+					ghostSpriteRotation = (bulletPosInfo(bullet, 4) + 90 + 720) \ 180 * 4 / 45
+					pos bulletPosInfo(bullet, 0) - 4, bulletPosInfo(bullet, 1) * 3 / 4 - 4
+					gcopy 2, 8 * ghostSpriteRotation, 8, 8, 8
+				}
+			next
+			if ( levelUpScreenCountdown >= 1 ) {
+				pos 46, 54
+				gmode 5, 0, 0, levelUpScreenCountdown * 128 / 15
+				gcopy 2, 56, 112, 67, 11
+			}
+			gmode 5, 0, 0, 256
+			pos 1, 104
+			gcopy 2, 0, 120, 24, 7
+			pos 1, 112
+			gcopy 2, 0, 128, 24, 7
+
+			parsedNumber = str(level)
+			getstr nothing, parsedNumber, 0
+			for charPos,0,strsize,1
+				pos 30 + charPos * 5, 104
+				gcopy 2, int(strmid(parsedNumber, charPos, 1)) * 5, 112, 4, 7
+			next
+
+			parsedNumber = str(score)
+			getstr nothing, parsedNumber, 0
+			for charPos,0,strsize,1
+				pos 30 + charPos * 5, 112
+				gcopy 2, int(strmid(parsedNumber, charPos, 1)) * 5, 112, 4, 7
+			next
+
+			for bomb,0,bombs,1
+				pos 152 - bomb * 8, 112
+				gcopy 2, (sinceInitTimer + bomb) \ 4 * 8, 24, 7, 7
+			next
+			if ( comboHealth >= 1 & scoreMultiplier >= 1 & afterComboEndCountdown <= 0 ) {
+				parsedNumber = str(scoreMultiplier + 1)
+				getstr nothing, parsedNumber, 0
+				for charPos,0,strsize,1
+					pos comboCounterCenterX - 2 * strsize + charPos * 4, comboCounterCenterY * 3 / 4 - 6
+					gcopy 2, int(strmid(parsedNumber, charPos, 1)) * 4, 136 + rnd(2) * 8, 3, 6
+				next
+				for charPos,0,strsize,1
+					pos 1 + charPos * 4, 1
+					gcopy 2, int(strmid(parsedNumber, charPos, 1)) * 4, 136 + rnd(2) * 8, 3, 6
+				next
+			}
+			if ( afterComboEndCountdown >= 1 ) {
+				parsedNumber = str(endScoreMultiplier + 1)
+				getstr nothing, parsedNumber, 0
+				for charPos,0,strsize,1
+					pos 1 + charPos * 5, 1
+					gcopy 2, int(strmid(parsedNumber, charPos, 1)) * 5, 112, 4, 7
+				next
+			}
+			if ( ghostSpawnCapped == 13 ) {
+				color 255, 255, 255
+				boxf
+			}
+			if ( ghostSpawnCapped == 12 | ghostSpawnCapped == 11 ) {
+				pos 0, 0
+				gmode 5, 0, 0, 256
+				gcopy 0, 0, 0, 160, 120
+			}
+			pos 0, 0
+			gzoom 320, 320, 0, 0, 0, 160, 160
+			redraw 1
+			if ( musicTimer == 1 ) {
+				ds_play musicBufferID
+			}
+			if ( musicTimer == 434 ) {
+				ds_loop musicBufferID + 1
+			}
+		}
+		if ( roundState == 0 ) {
+			//for whatever goddamn reason rakugan used this variable for both the round intro animation timer and for the ghost angles
+			randomAngleAndStartTimer += 1
+			gosub *checkKeys
+			if ( randomAngleAndStartTimer == 64 ) {
+				roundState = 1
+			}
+			if ( randomAngleAndStartTimer == 1 ) {
+				sfxInfo(19, isPlaying) = 1
+			}
+			redraw 0
+			color 0, 0, 0
+			boxf
+			if ( randomAngleAndStartTimer >= 33 ) {
+				gmode 4, 0, 0, 256 - (randomAngleAndStartTimer - 32) * 8
+			}
+			else {
+				if ( randomAngleAndStartTimer <= 16 ) {
+					gmode 4, 0, 0, randomAngleAndStartTimer * 16
+				}
+				else {
+					gmode 4, 0, 0, 256
+				}
+			}
+			pos 0, 0
+			gcopy 4, 0, 0, 160, 120
+			gmode 4, 0, 0, 256
+			pos 66, 51
+			gcopy 4, 170, 3, 26, 20
+			color 255, 255, 0
+			if ( randomAngleAndStartTimer >= 33 ) {
+				gmode 5, 0, 0, (randomAngleAndStartTimer - 32) * 8
+				pos playerX - 4, playerY * 3 / 4 - 4
+				gcopy 2, 8 * (sinceInitTimer / 5 \ 6), 0, 8, 8
+			}
+			pos 0, 0
+			gzoom 320, 320, 0, 0, 0, 160, 160
+			redraw 1
+		}
+		if ( roundState == 2 ) {
+			gosub *checkKeys
+			gameOverTimer += 1
+			if ( gameOverTimer == 1 ) {
+				ds_stop musicBufferID
+				ds_stop musicBufferID + 1
+				sfxInfo(14, isPlaying) = 1
+				clipboardCooldown = 0
+			}
+			if ( gameOverTimer >= 20 ) {
+				gameOverAfterGhostAnimTimer += 1
+			}
+			if ( gameOverAfterGhostAnimTimer == 110 & music != 3 ) {
+				ds_play musicBufferID + 2
+			}
+			if ( gameOverAfterGhostAnimTimer >= 120 & keyInfo(R, pressedTime) == 1 ) {
+				ds_stop musicBufferID + 2
+				if ( oldMusic != music ) {
+					goto *loadMusic
+				}
+				else {
+					goto *initRoundVariables
+				}
+			}
+			if ( music == 3 & gameOverAfterGhostAnimTimer == 120 ) {
+				gameOverAfterGhostAnimTimer = 408
+			}
+			if ( gameOverAfterGhostAnimTimer >= 120 ) {
+				if ( clipboardCooldown >= 1 ) {
+					clipboardCooldown -= 1
+				}
+				if ( keyInfo(T, pressedTime) == 1 & clipboardCooldown == 0 ) {
+					sfxInfo(16, isPlaying) = 1
+					clipboardData = "すこあ : " + str(score)
+					clipboardData += "\nれべる : " + str(level)
+					clipboardData += "\nじょーぶつ : " + str(ghostsHit)
+					clipboardData += "\n#GhostMayoker"
+					clipset clipboardData
+					clipboardCooldown = 32
+				}
+			}
+			if ( gameOverAfterGhostAnimTimer >= 408 ) {
+				if ( keyInfo(LEFT, pressedTime) == 1 ) {
+					sfxInfo(20, isPlaying) = 1
+					music = (music + 1) \ 4
+				}
+				if ( keyInfo(RIGHT, pressedTime) == 1 ) {
+					sfxInfo(20, isPlaying) = 1
+					music = (music + 3) \ 4
+				}
+			}
+			gameOverGhostAnimSpeed = 3
+			if ( gameOverAfterGhostAnimTimer == gameOverGhostAnimSpeed * 18 | gameOverAfterGhostAnimTimer == gameOverGhostAnimSpeed * 20 | gameOverAfterGhostAnimTimer == gameOverGhostAnimSpeed * 21 | gameOverAfterGhostAnimTimer == gameOverGhostAnimSpeed * 22 ) {
+				randomAngleAndStartTimer = rnd(360)
+				repeat 10
+					gosub *getAvailableGhostHitParticleSlot
+					if ( newHitParticle != (-1) ) {
+						hitParticlePosInfo(newHitParticle, 0) = 80.0
+						hitParticlePosInfo(newHitParticle, 1) = 80.0
+						if ( gameOverAfterGhostAnimTimer >= gameOverGhostAnimSpeed * 20 ) {
+							ghostHitParticleTimeInfo(newHitParticle) = 5
+							hitParticlePosInfo(newHitParticle, 2) = 2.0 * (cnt \ 2 + 1) * cos(0.0174532925199433 * (360 / 10 * cnt + randomAngleAndStartTimer))
+							hitParticlePosInfo(newHitParticle, 3) = 2.0 * (cnt \ 2 + 1) * sin(0.0174532925199433 * (360 / 10 * cnt + randomAngleAndStartTimer))
+						}
+						else {
+							ghostHitParticleTimeInfo(newHitParticle) = 12
+							hitParticlePosInfo(newHitParticle, 2) = 2.0 * (cnt \ 2 + 2) * cos(0.0174532925199433 * (360 / 10 * cnt + randomAngleAndStartTimer))
+							hitParticlePosInfo(newHitParticle, 3) = 2.0 * (cnt \ 2 + 2) * sin(0.0174532925199433 * (360 / 10 * cnt + randomAngleAndStartTimer))
+						}
+					}
+				loop
+			}
+			gosub *bulletMovement
+			gosub *ghostHitPartMovement
+			redraw 0
+			if ( gameOverTimer == 1 | gameOverTimer == 3 ) {
+				color 255, 255, 255
+			}
+			else {
+				color 0, 0, 0
+			}
+			boxf
+			gmode 5, 0, 0, 256
+			pos 66, 51
+			gcopy 4, 170, 3, 26, 20
+			if ( gameOverTimer <= 16 & gameOverTimer >= 2 ) {
+				for ghost,0,maxGhostNumber,1
+					if ( ghostAliveTimeInfo(ghost) >= 1 ) {
+						gmode 5, 0, 0, (256 - gameOverTimer * 16) * rnd(2)
+						ghostSpriteRotation = (ghostPosInfo(ghost, 4) - 90 + 720) \ 360 * 2 / 45
+						pos ghostPosInfo(ghost, 0) - 8, ghostPosInfo(ghost, 1) * 3 / 4 - 8
+						gcopy 3, 16 * ghostSpriteRotation, 16 * ((sinceInitTimer / 3 + ghost) \ 4), 16, 16
+					}
+				next
+			}
+			if ( gameOverAfterGhostAnimTimer \ gameOverGhostAnimSpeed == 0 ) {
+				if ( gameOverAfterGhostAnimTimer != 0 & gameOverAfterGhostAnimTimer / gameOverGhostAnimSpeed != 4 & gameOverAfterGhostAnimTimer / gameOverGhostAnimSpeed != 6 & gameOverAfterGhostAnimTimer / gameOverGhostAnimSpeed != 8 ) {
+					gameOverGhostAnimFrame += 1
+				}
+			}
+			if ( gameOverAfterGhostAnimTimer == 50 ) {
+				sfxInfo(15, isPlaying) = 1
+			}
+			if ( gameOverAfterGhostAnimTimer >= 110 ) {
+				pos 45, 54
+				gmode 5, 0, 0, 256
+				gcopy 2, 56, 124, 70, 11
+			}
+			if ( gameOverAfterGhostAnimTimer >= 408 ) {
+				pos 36, 72
+				gmode 5, 0, 0, 256
+				gcopy 2, 56, 136, 96, 15
+			}
+			if ( gameOverAfterGhostAnimTimer >= 110 & clipboardCooldown >= 1 ) {
+				pos 53, 88
+				gmode 5, 0, 0, clipboardCooldown * 8
+				gcopy 2, 56, 152, 54, 7
+			}
+			if ( gameOverAfterGhostAnimTimer >= 408 & keyInfo(LEFT, pressedTime) != 1 & keyInfo(RIGHT, pressedTime) != 1 ) {
+				pos 72, 90
+				gcopy 4, 64 + sinceInitTimer / 4 \ 4 * 16, 128 + music * 16, 15, 15
+			}
+			gmode 5, 0, 0, 256
+			pos 64, 28
+			gcopy 3, 0 + gameOverGhostAnimFrame \ 10 * 32, 96 + gameOverGhostAnimFrame / 10 * 32, 32, 32
+			pos 1, 104
+			gcopy 2, 0, 120, 24, 7
+			pos 1, 112
+			gcopy 2, 0, 128, 24, 7
+
+			parsedNumber = str(level)
+			getstr nothing, parsedNumber, 0
+			for charPos,0,strsize,1
+				pos 30 + charPos * 5, 104
+				gcopy 2, int(strmid(parsedNumber, charPos, 1)) * 5, 112, 4, 7
+			next
+
+			parsedNumber = str(score)
+			getstr nothing, parsedNumber, 0
+			for charPos,0,strsize,1
+				pos 30 + charPos * 5, 112
+				gcopy 2, int(strmid(parsedNumber, charPos, 1)) * 5, 112, 4, 7
+			next
+			
+			for particle,0,maxHitParticleNumber,1
+				if ( ghostHitParticleTimeInfo(particle) >= 1 ) {
+					gmode 5, 0, 0, ghostHitParticleTimeInfo(particle) * 64 / 3
+					pos hitParticlePosInfo(particle, 0) - 4, hitParticlePosInfo(particle, 1) * 3 / 4 - 4
+					gcopy 2, 8 * ((sinceInitTimer + particle) \ 6), 16, 8, 8
+				}
+			next
+			
+			pos 0, 0
+			gzoom 320, 320, 0, 0, 0, 160, 160
+			redraw 1
+		}
+	}
+	gosub *playSfx
+	await 0
+	goto *roundLoop
+*ghostMovement
+	for ghost,0,maxGhostNumber,1
+		if ( ghostAliveTimeInfo(ghost) <= (-1) ) { //ghost die movement
+			ghostAliveTimeInfo(ghost) += 1
+			ghostPosInfo(ghost, 2) = cos(0.0174532925199433 * ghostPosInfo(ghost, 4)) * ghostAliveTimeInfo(ghost) / 10
+			ghostPosInfo(ghost, 3) = sin(0.0174532925199433 * ghostPosInfo(ghost, 4)) * ghostAliveTimeInfo(ghost) / 10
+			ghostPosInfo(ghost, 0) += 1.0 * ghostPosInfo(ghost, 2)
+			ghostPosInfo(ghost, 1) += 1.0 * ghostPosInfo(ghost, 3)
+		}
+		if ( ghostAliveTimeInfo(ghost) >= 1 ) {
+			if ( ghostAliveTimeInfo(ghost) >= 150 / level & ghostAliveTimeInfo(ghost) >= 20 ) {
+				//makes ghost go towards bed
+				ghostLeanToBed = 57.2957795130823 * atan(ghostPosInfo(ghost, 1) - 80, ghostPosInfo(ghost, 0) - 80) + 180
+				ghostLeanToBed = ghostPosInfo(ghost, 4) - ghostLeanToBed
+				if ( ghostLeanToBed >= 180 ) {
+					ghostLeanToBed -= 360
+				}
+				if ( ghostLeanToBed <= (-180) ) {
+					ghostLeanToBed += 360
+				}
+				if ( ghostLeanToBed >= 1 ) {
+					ghostPosInfo(ghost, 4) -= 1
+				}
+				if ( ghostLeanToBed <= (-1) ) {
+					ghostPosInfo(ghost, 4) += 1
+				}
+			}
+			else {
+				//mfw
+				if ( ghostRotateMore(ghost) == 0 ) {
+					ghostPosInfo(ghost, 4) = ghostPosInfo(ghost, 4) + (ghost \ 2 * 2 - 1)
+				}
+				else {
+					ghostPosInfo(ghost, 4) = ghostPosInfo(ghost, 4)
+				}
+			}
+			if ( ghostRotateMore(ghost) == 0 ) {
+				ghostMoveMultiplier = 1
+			}
+			if ( ghostRotateMore(ghost) == 1 ) {
+				ghostMoveMultiplier = 0.9
+			}
+			ghostPosInfo(ghost, 2) = cos(0.0174532925199433 * ghostPosInfo(ghost, 4)) * ghostSpeed * ghostMoveMultiplier
+			ghostPosInfo(ghost, 3) = sin(0.0174532925199433 * ghostPosInfo(ghost, 4)) * ghostSpeed * ghostMoveMultiplier
+			ghostPosInfo(ghost, 0) += 1.0 * ghostPosInfo(ghost, 2)
+			ghostPosInfo(ghost, 1) += 1.0 * ghostPosInfo(ghost, 3)
+			ghostAliveTimeInfo(ghost) += 1
+			ghostDistanceX = ghostPosInfo(ghost, 0) - playerX
+			ghostDistanceY = ghostPosInfo(ghost, 1) - playerY
+			if ( ghostDistanceX * ghostDistanceX + ghostDistanceY * ghostDistanceY <= 100 ) {
+				ghostAliveTimeInfo(ghost) = -16
+				ghostsHit += 1
+				ghostHitSFX = (ghostHitSFX + 1) \ 9
+				sfxInfo(1 + ghostHitSFX, isPlaying) = 1
+				sfxInfo(10, isPlaying) = 1
+				score += 10
+				randomAngleAndStartTimer = rnd(360)
+				ghostPartCenterX = ghostPosInfo(ghost, 0)
+				ghostPartCenterY = ghostPosInfo(ghost, 1)
+				repeat 5
+					gosub *getAvailableGhostHitParticleSlot
+					if ( newHitParticle != (-1) ) {
+						ghostHitParticleTimeInfo(newHitParticle) = 12
+						hitParticlePosInfo(newHitParticle, 0) = ghostPartCenterX
+						hitParticlePosInfo(newHitParticle, 1) = ghostPartCenterY
+						hitParticlePosInfo(newHitParticle, 2) = 3.0 * cos(0.0174532925199433 * (360 / 5 * cnt + randomAngleAndStartTimer))
+						hitParticlePosInfo(newHitParticle, 3) = 3.0 * sin(0.0174532925199433 * (360 / 5 * cnt + randomAngleAndStartTimer))
+					}
+				loop
+				if ( comboHealth >= 1 ) {
+					scoreMultiplier += 1
+					comboCounterCenterX = ghostPosInfo(ghost, 0)
+					comboCounterCenterY = ghostPosInfo(ghost, 1)
+				}
+				comboHealth = 20
+			}
+			for bullet,0,maxBulletNumber,1
+				if ( bulletAliveInfo(bullet) == 1 & ghostAliveTimeInfo(ghost) >= 1 ) {
+					ghostDistanceX = ghostPosInfo(ghost, 0) - bulletPosInfo(bullet, 0)
+					ghostDistanceY = ghostPosInfo(ghost, 1) - bulletPosInfo(bullet, 1)
+					if ( ghostDistanceX * ghostDistanceX + ghostDistanceY * ghostDistanceY <= 100 ) {
+						ghostAliveTimeInfo(ghost) = -16
+						ghostsHit += 1
+						ghostHitSFX = (ghostHitSFX + 1) \ 9
+						sfxInfo(1 + ghostHitSFX, isPlaying) = 1
+						sfxInfo(10, isPlaying) = 1
+						score += 1 * (scoreMultiplier + 1)
+						randomAngleAndStartTimer = rnd(360)
+						ghostPartCenterX = ghostPosInfo(ghost, 0)
+						ghostPartCenterY = ghostPosInfo(ghost, 1)
+						repeat 5
+							gosub *getAvailableGhostHitParticleSlot
+							if ( newHitParticle != (-1) ) {
+								ghostHitParticleTimeInfo(newHitParticle) = 12
+								hitParticlePosInfo(newHitParticle, 0) = ghostPartCenterX
+								hitParticlePosInfo(newHitParticle, 1) = ghostPartCenterY
+								hitParticlePosInfo(newHitParticle, 2) = 3.0 * cos(0.0174532925199433 * (360 / 5 * cnt + randomAngleAndStartTimer))
+								hitParticlePosInfo(newHitParticle, 3) = 3.0 * sin(0.0174532925199433 * (360 / 5 * cnt + randomAngleAndStartTimer))
+							}
+						loop
+						if ( comboHealth >= 1 ) {
+							scoreMultiplier += 1
+							comboCounterCenterX = ghostPosInfo(ghost, 0)
+							comboCounterCenterY = ghostPosInfo(ghost, 1)
+						}
+						comboHealth = 20
+					}
+				}
+			next
+			if ( ghostSpawnCapped == 12 & ghostAliveTimeInfo(ghost) >= 1 ) {
+				ghostAliveTimeInfo(ghost) = -16
+				ghostsHit += 1
+				sfxInfo(1 + (ghostHitSFX + 1) \ 9, isPlaying) = 1
+				sfxInfo(11, isPlaying) = 1
+				score += 5
+				gosub *getAvailableGhostHitParticleSlot
+				if ( newHitParticle != (-1) ) {
+					ghostHitParticleTimeInfo(newHitParticle) = 12
+					hitParticlePosInfo(newHitParticle, 0) = ghostPosInfo(ghost, 0)
+					hitParticlePosInfo(newHitParticle, 1) = ghostPosInfo(ghost, 1)
+					hitParticlePosInfo(newHitParticle, 2) = 0.0
+					hitParticlePosInfo(newHitParticle, 3) = -5.0
+				}
+			}
+			ghostDistanceX = ghostPosInfo(ghost, 0) - 80
+			ghostDistanceY = ghostPosInfo(ghost, 1) - 80
+			if ( ghostDistanceX * ghostDistanceX + ghostDistanceY * ghostDistanceY <= 10 & ghostAliveTimeInfo(ghost) >= 1 ) {
+				if ( bombs >= 1 ) {
+					ghostSpawnCapped = 13
+					sfxInfo(12, isPlaying) = 1
+					bombs -= 1
+				}
+				else {
+					if ( ghostSpawnCapped == 0 ) {
+						ghostAliveTimeInfo(ghost) = 0
+						roundState = 2
+					}
+				}
+			}
+			if ( ghostPosInfo(ghost, 0) >= 167 | ghostPosInfo(ghost, 1) >= 172 | ghostPosInfo(ghost, 0) <= (-7) | ghostPosInfo(ghost, 1) <= (-12) ) { 
+				//despawn ghost
+				ghostAliveTimeInfo(ghost) = 0
+			}
+		}
+	next
+	return
+*getAvailableGhostSlot
+	newGhost = -1
+	for slot,0,maxGhostNumber,1
+		if ( ghostAliveTimeInfo(slot) == 0 ) {
+			newGhost = slot
+			return
+		}
+	next
+	return
+*bulletMovement
+	for bullet,0,maxBulletNumber,1
+		if ( bulletAliveInfo(bullet) == 1 ) {
+			if ( bulletPosInfo(bullet, 0) >= 161 | bulletPosInfo(bullet, 1) >= 161 | bulletPosInfo(bullet, 0) <= (-1) | bulletPosInfo(bullet, 1) <= (-1) ) {
+				bulletAliveInfo(bullet) = 0
+			}
+			bulletPosInfo(bullet, 2) = cos(0.0174532925199433 * bulletPosInfo(bullet, 4)) * 10
+			bulletPosInfo(bullet, 3) = sin(0.0174532925199433 * bulletPosInfo(bullet, 4)) * 10
+			bulletPosInfo(bullet, 0) += bulletPosInfo(bullet, 2)
+			bulletPosInfo(bullet, 1) += bulletPosInfo(bullet, 3)
+		}
+	next
+	return
+*getAvailableBulletSlot
+	newBullet = -1
+	for slot,0,maxBulletNumber,1
+		if ( bulletAliveInfo(slot) == 0 ) {
+			newBullet = slot
+			return
+		}
+	next
+	return
+*ghostHitPartMovement
+	for particle,0,maxHitParticleNumber,1
+		if ( ghostHitParticleTimeInfo(particle) >= 1 ) {
+			ghostHitParticleTimeInfo(particle) -= 1
+			if ( hitParticlePosInfo(particle, 0) >= 164 | hitParticlePosInfo(particle, 1) >= 164 | hitParticlePosInfo(particle, 0) <= (-3) | hitParticlePosInfo(particle, 1) <= (-3) ) {
+				ghostHitParticleTimeInfo(particle) = 0
+			}
+			hitParticlePosInfo(particle, 2) = hitParticlePosInfo(particle, 2) * 0.8
+			hitParticlePosInfo(particle, 3) = hitParticlePosInfo(particle, 3) * 0.8
+			hitParticlePosInfo(particle, 0) += hitParticlePosInfo(particle, 2)
+			hitParticlePosInfo(particle, 1) += hitParticlePosInfo(particle, 3)
+		}
+	next
+	return
+*getAvailableGhostHitParticleSlot
+	newHitParticle = -1
+	for slot,0,maxHitParticleNumber,1
+		if ( ghostHitParticleTimeInfo(slot) == 0 ) {
+			newHitParticle = slot
+			return
+		}
+	next
+	return
+*checkKeys
+	if ( ginfo(2) == 0 ) {
+		getkey keyInfo(LEFT, isPressed), 37
+		getkey keyInfo(UP, isPressed), 38
+		getkey keyInfo(RIGHT, isPressed), 39
+		getkey keyInfo(DOWN, isPressed), 40
+		getkey keyInfo(Z, isPressed), 90
+		getkey keyInfo(X, isPressed), 88
+		getkey keyInfo(R, isPressed), 82
+		getkey keyInfo(S, isPressed), 83
+		getkey keyInfo(T, isPressed), 84
+		getkey keyInfo(ESC, isPressed), 27
+		for key,0,10,1
+			if (keyInfo(key, isPressed) == 1 ) {
+				keyInfo(key, pressedTime) += 1
+			}
+			else {
+				keyInfo(key, pressedTime) = 0
+			}
+		next
+	}
+	return
+*playSfx
+	repeat maxSfxFileID
+		if ( sfxInfo(cnt, isPlaying) == 1 ) {
+			ds_play maxSfxFileID * sfxInfo(cnt, 1) + cnt
+			sfxInfo(cnt, isPlaying) = 0
+			sfxInfo(cnt, 1) = (sfxInfo(cnt, 1) + 1) \ maxSoundBufferDuplicate //idk what this is supposed to be, it isn't used anywhere else at all
+		}
+	loop
+	return
