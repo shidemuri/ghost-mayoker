@@ -253,8 +253,8 @@
 				backwardsParticleCenterOffset = playerCenterOffset
 				sfxInfo(23, isPlaying) = 1
 			}
-			playerX = 1.0 * playerCenter + cos(0.0174532925199433 * playerRotation) * playerCenterOffset
-			playerY = 1.0 * playerCenter + sin(0.0174532925199433 * playerRotation) * playerCenterOffset
+			playerX = 1.0 * playerCenter + cos(deg2rad(1) * playerRotation) * playerCenterOffset
+			playerY = 1.0 * playerCenter + sin(deg2rad(1) * playerRotation) * playerCenterOffset
 			
 			if ( keyInfo(UP, isPressed) == 1 & playerCenterOffset <= 69 ) {
 				playerCenterOffset += 1
@@ -354,8 +354,8 @@
 							}
 						}
 					}
-					ghostPosInfo(newGhost, 0) = 80.0 + cos(0.0174532925199433 * randomAngleAndStartTimer) * 78
-					ghostPosInfo(newGhost, 1) = 80.0 + sin(0.0174532925199433 * randomAngleAndStartTimer) * 78
+					ghostPosInfo(newGhost, 0) = 80.0 + cos(deg2rad(1) * randomAngleAndStartTimer) * 78
+					ghostPosInfo(newGhost, 1) = 80.0 + sin(deg2rad(1) * randomAngleAndStartTimer) * 78
 					ghostPosInfo(newGhost, 5) = 0.2
 				}
 				ghostSpawnCountdown = 30 / level
@@ -461,7 +461,7 @@
 				//spawns that trail when you do backwards action
 				repeat 5
 					gmode 5, 0, 0, cnt * playerBackwardsParticle * 30 + 10
-					pos cos(0.0174532925199433 * backwardsParticleRot) * (backwardsParticleCenterOffset * (cnt * 2 - 5) * 0.2) + 80 - 4, sin(0.0174532925199433 * backwardsParticleRot) * (backwardsParticleCenterOffset * (cnt * 2 - 5) * 0.2) * 3 / 4 + 60 - 4
+					pos cos(deg2rad(1) * backwardsParticleRot) * (backwardsParticleCenterOffset * (cnt * 2 - 5) * 0.2) + 80 - 4, sin(deg2rad(1) * backwardsParticleRot) * (backwardsParticleCenterOffset * (cnt * 2 - 5) * 0.2) * 3 / 4 + 60 - 4
 					gcopy 2, 8 * ((sinceInitTimer / 5 + cnt) \ 6), 0, 8, 8
 				loop
 			}
@@ -642,13 +642,13 @@
 						hitParticlePosInfo(newHitParticle, 1) = 80.0
 						if ( gameOverAfterGhostAnimTimer >= gameOverGhostAnimSpeed * 20 ) {
 							ghostHitParticleTimeInfo(newHitParticle) = 5
-							hitParticlePosInfo(newHitParticle, 2) = 2.0 * (cnt \ 2 + 1) * cos(0.0174532925199433 * (360 / 10 * cnt + randomAngleAndStartTimer))
-							hitParticlePosInfo(newHitParticle, 3) = 2.0 * (cnt \ 2 + 1) * sin(0.0174532925199433 * (360 / 10 * cnt + randomAngleAndStartTimer))
+							hitParticlePosInfo(newHitParticle, 2) = 2.0 * (cnt \ 2 + 1) * cos(deg2rad(1) * (360 / 10 * cnt + randomAngleAndStartTimer))
+							hitParticlePosInfo(newHitParticle, 3) = 2.0 * (cnt \ 2 + 1) * sin(deg2rad(1) * (360 / 10 * cnt + randomAngleAndStartTimer))
 						}
 						else {
 							ghostHitParticleTimeInfo(newHitParticle) = 12
-							hitParticlePosInfo(newHitParticle, 2) = 2.0 * (cnt \ 2 + 2) * cos(0.0174532925199433 * (360 / 10 * cnt + randomAngleAndStartTimer))
-							hitParticlePosInfo(newHitParticle, 3) = 2.0 * (cnt \ 2 + 2) * sin(0.0174532925199433 * (360 / 10 * cnt + randomAngleAndStartTimer))
+							hitParticlePosInfo(newHitParticle, 2) = 2.0 * (cnt \ 2 + 2) * cos(deg2rad(1) * (360 / 10 * cnt + randomAngleAndStartTimer))
+							hitParticlePosInfo(newHitParticle, 3) = 2.0 * (cnt \ 2 + 2) * sin(deg2rad(1) * (360 / 10 * cnt + randomAngleAndStartTimer))
 						}
 					}
 				loop
@@ -745,15 +745,15 @@
 	for ghost,0,maxGhostNumber,1
 		if ( ghostAliveTimeInfo(ghost) <= (-1) ) { //ghost die movement
 			ghostAliveTimeInfo(ghost) += 1
-			ghostPosInfo(ghost, 2) = cos(0.0174532925199433 * ghostPosInfo(ghost, 4)) * ghostAliveTimeInfo(ghost) / 10
-			ghostPosInfo(ghost, 3) = sin(0.0174532925199433 * ghostPosInfo(ghost, 4)) * ghostAliveTimeInfo(ghost) / 10
+			ghostPosInfo(ghost, 2) = cos(deg2rad(1) * ghostPosInfo(ghost, 4)) * ghostAliveTimeInfo(ghost) / 10
+			ghostPosInfo(ghost, 3) = sin(deg2rad(1) * ghostPosInfo(ghost, 4)) * ghostAliveTimeInfo(ghost) / 10
 			ghostPosInfo(ghost, 0) += 1.0 * ghostPosInfo(ghost, 2)
 			ghostPosInfo(ghost, 1) += 1.0 * ghostPosInfo(ghost, 3)
 		}
 		if ( ghostAliveTimeInfo(ghost) >= 1 ) {
 			if ( ghostAliveTimeInfo(ghost) >= 150 / level & ghostAliveTimeInfo(ghost) >= 20 ) {
 				//makes ghost go towards bed
-				ghostLeanToBed = 57.2957795130823 * atan(ghostPosInfo(ghost, 1) - 80, ghostPosInfo(ghost, 0) - 80) + 180
+				ghostLeanToBed = rad2deg(1) * atan(ghostPosInfo(ghost, 1) - 80, ghostPosInfo(ghost, 0) - 80) + 180
 				ghostLeanToBed = ghostPosInfo(ghost, 4) - ghostLeanToBed
 				if ( ghostLeanToBed >= 180 ) {
 					ghostLeanToBed -= 360
@@ -783,8 +783,8 @@
 			if ( ghostRotateMore(ghost) == 1 ) {
 				ghostMoveMultiplier = 0.9
 			}
-			ghostPosInfo(ghost, 2) = cos(0.0174532925199433 * ghostPosInfo(ghost, 4)) * ghostSpeed * ghostMoveMultiplier
-			ghostPosInfo(ghost, 3) = sin(0.0174532925199433 * ghostPosInfo(ghost, 4)) * ghostSpeed * ghostMoveMultiplier
+			ghostPosInfo(ghost, 2) = cos(deg2rad(1) * ghostPosInfo(ghost, 4)) * ghostSpeed * ghostMoveMultiplier
+			ghostPosInfo(ghost, 3) = sin(deg2rad(1) * ghostPosInfo(ghost, 4)) * ghostSpeed * ghostMoveMultiplier
 			ghostPosInfo(ghost, 0) += 1.0 * ghostPosInfo(ghost, 2)
 			ghostPosInfo(ghost, 1) += 1.0 * ghostPosInfo(ghost, 3)
 			ghostAliveTimeInfo(ghost) += 1
@@ -806,8 +806,8 @@
 						ghostHitParticleTimeInfo(newHitParticle) = 12
 						hitParticlePosInfo(newHitParticle, 0) = ghostPartCenterX
 						hitParticlePosInfo(newHitParticle, 1) = ghostPartCenterY
-						hitParticlePosInfo(newHitParticle, 2) = 3.0 * cos(0.0174532925199433 * (360 / 5 * cnt + randomAngleAndStartTimer))
-						hitParticlePosInfo(newHitParticle, 3) = 3.0 * sin(0.0174532925199433 * (360 / 5 * cnt + randomAngleAndStartTimer))
+						hitParticlePosInfo(newHitParticle, 2) = 3.0 * cos(deg2rad(1) * (360 / 5 * cnt + randomAngleAndStartTimer))
+						hitParticlePosInfo(newHitParticle, 3) = 3.0 * sin(deg2rad(1) * (360 / 5 * cnt + randomAngleAndStartTimer))
 					}
 				loop
 				if ( comboHealth >= 1 ) {
@@ -837,8 +837,8 @@
 								ghostHitParticleTimeInfo(newHitParticle) = 12
 								hitParticlePosInfo(newHitParticle, 0) = ghostPartCenterX
 								hitParticlePosInfo(newHitParticle, 1) = ghostPartCenterY
-								hitParticlePosInfo(newHitParticle, 2) = 3.0 * cos(0.0174532925199433 * (360 / 5 * cnt + randomAngleAndStartTimer))
-								hitParticlePosInfo(newHitParticle, 3) = 3.0 * sin(0.0174532925199433 * (360 / 5 * cnt + randomAngleAndStartTimer))
+								hitParticlePosInfo(newHitParticle, 2) = 3.0 * cos(deg2rad(1) * (360 / 5 * cnt + randomAngleAndStartTimer))
+								hitParticlePosInfo(newHitParticle, 3) = 3.0 * sin(deg2rad(1) * (360 / 5 * cnt + randomAngleAndStartTimer))
 							}
 						loop
 						if ( comboHealth >= 1 ) {
@@ -902,8 +902,8 @@
 			if ( bulletPosInfo(bullet, 0) >= 161 | bulletPosInfo(bullet, 1) >= 161 | bulletPosInfo(bullet, 0) <= (-1) | bulletPosInfo(bullet, 1) <= (-1) ) {
 				bulletAliveInfo(bullet) = 0
 			}
-			bulletPosInfo(bullet, 2) = cos(0.0174532925199433 * bulletPosInfo(bullet, 4)) * 10
-			bulletPosInfo(bullet, 3) = sin(0.0174532925199433 * bulletPosInfo(bullet, 4)) * 10
+			bulletPosInfo(bullet, 2) = cos(deg2rad(1) * bulletPosInfo(bullet, 4)) * 10
+			bulletPosInfo(bullet, 3) = sin(deg2rad(1) * bulletPosInfo(bullet, 4)) * 10
 			bulletPosInfo(bullet, 0) += bulletPosInfo(bullet, 2)
 			bulletPosInfo(bullet, 1) += bulletPosInfo(bullet, 3)
 		}
